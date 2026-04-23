@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#080810">
+  <title>강서플라이미술학원 · 출결</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    :root {
+      --blue:#0028f9;--mint:#00C4A1;--red:#FF6B6B;--yellow:#FFB800;
+      --dark:#080810;--card:#0f0f1a;--card2:#161626;
+      --border:rgba(255,255,255,0.07);--text:#eeeef8;--sub:#8888aa;
+      --font:'Noto Sans KR',sans-serif;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    html,body{height:100%;font-family:var(--font);background:var(--dark);color:var(--text);-webkit-font-smoothing:antialiased;}
+    .view{display:none;}
+    .view.active{display:flex;flex-direction:column;min-height:100vh;}
+    /* Loading */
+    #v-loading{align-items:center;justify-content:center;}
+    .loader-logo{font-size:1.4rem;font-weight:900;color:var(--mint);text-align:center;}
+    .loader-sub{font-size:.75rem;color:var(--sub);margin-top:6px;text-align:center;}
+    .spinner{width:28px;height:28px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--mint);animation:spin .8s linear infinite;margin:20px auto;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+    /* Shared */
+    label{display:block;font-size:.75rem;color:var(--sub);margin-bottom:6px;font-weight:500;}
+    input,select{width:100%;padding:11px 14px;background:var(--card2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--font);font-size:.9rem;outline:none;transition:border-color .2s;margin-bottom:14px;-webkit-appearance:none;}
+    input:focus,select:focus{border-color:var(--mint);}
+    input::placeholder{color:var(--sub);}
+    select option{background:var(--card2);}
+    .btn{display:block;width:100%;padding:13px;background:var(--blue);color:#fff;border:none;border-radius:10px;font-family:var(--font);font-size:.9rem;font-weight:700;cursor:pointer;transition:opacity .15s,transform .1s;}
+    .btn:hover{opacity:.88;}.btn:active{transform:scale(.98);}.btn:disabled{opacity:.3;cursor:not-allowed;}
+    .btn-mint{background:var(--mint);}.btn-outline{background:transparent;border:1px solid var(--border);color:var(--sub);}
+    .btn-yellow{background:var(--yellow);color:#000;}.btn-sm{padding:7px 14px;font-size:.78rem;border-radius:8px;width:auto;display:inline-block;}
+    .btn-danger{background:var(--red);}
+    /* Setup */
+    #v-setup{align-items:center;justify-content:center;padding:24px;}
+    .setup-box{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:28px 24px;width:100%;max-width:420px;}
+    .setup-title{font-size:1.2rem;font-weight:900;color:var(--mint);margin-bottom:4px;}
+    .setup-desc{font-size:.78rem;color:var(--sub);margin-bottom:22px;line-height:1.7;}
+    .setup-guide{background:var(--card2);border-radius:10px;padding:14px;margin-bottom:20px;font-size:.75rem;color:var(--sub);line-height:1.8;}
+    .setup-guide b{color:var(--text);}
+    /* Wall */
+    #v-wall{align-items:center;}
+    .wall-header{width:100%;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);}
+    .wall-logo{font-size:.95rem;font-weight:900;color:var(--mint);}
+    .wall-date{font-size:.72rem;color:var(--sub);}
+    .wall-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 20px;gap:20px;width:100%;}
+    .qr-wrap{text-align:center;}
+    .qr-label{font-size:.78rem;color:var(--sub);margin-bottom:14px;}
+    .qr-box{background:#fff;padding:16px;border-radius:14px;box-shadow:0 0 60px rgba(0,196,161,.2);display:inline-block;}
+    .wall-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%;max-width:340px;}
+    .stat-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 8px;text-align:center;}
+    .stat-num{font-size:1.7rem;font-weight:900;line-height:1;}
+    .stat-label{font-size:.65rem;color:var(--sub);margin-top:4px;}
+    .wall-instruction{font-size:.78rem;color:var(--sub);text-align:center;background:var(--card);border-radius:10px;padding:12px 16px;width:100%;max-width:340px;line-height:1.7;}
+    .wall-instruction strong{color:var(--text);}
+    .wall-gps-badge{display:flex;align-items:center;gap:6px;font-size:.72rem;color:var(--mint);background:rgba(0,196,161,.1);border:1px solid rgba(0,196,161,.2);border-radius:20px;padding:5px 12px;}
+    .gps-dot{width:6px;height:6px;border-radius:50%;background:var(--mint);animation:pulse 2s infinite;}
+    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+    @media print{
+      body{background:white;}.wall-header,.wall-stats,.wall-instruction,.wall-gps-badge,.nav-link,.print-hide{display:none!important;}
+      #v-wall{background:white;}.wall-body{padding:40px;}.qr-label{color:#333;font-size:14px;}
+      .qr-box{box-shadow:none;border:2px solid #eee;}.print-info{display:block!important;}
+    }
+    .print-info{display:none;margin-top:12px;font-size:.72rem;color:var(--sub);text-align:center;}
+    /* Checkin */
+    #v-checkin{align-items:center;justify-content:center;padding:24px;}
+    .checkin-box{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:28px 22px;width:100%;max-width:360px;}
+    .checkin-header{text-align:center;margin-bottom:24px;}
+    .checkin-icon{font-size:2.2rem;margin-bottom:8px;}
+    .checkin-title{font-size:1.1rem;font-weight:700;}
+    .checkin-sub{font-size:.8rem;color:var(--sub);margin-top:3px;}
+    .checkin-time{font-size:.75rem;color:var(--mint);margin-top:6px;font-weight:500;font-variant-numeric:tabular-nums;}
+    /* GPS states */
+    .gps-state{text-align:center;padding:20px 0;}
+    .gps-state-icon{font-size:2.5rem;margin-bottom:12px;}
+    .gps-state-title{font-size:1rem;font-weight:700;margin-bottom:6px;}
+    .gps-state-desc{font-size:.8rem;color:var(--sub);line-height:1.6;}
+    .gps-checking{color:var(--mint);}
+    .gps-bar{width:100%;height:4px;background:var(--border);border-radius:2px;margin:16px 0;overflow:hidden;}
+    .gps-bar-fill{height:100%;width:0%;background:var(--mint);border-radius:2px;animation:gps-progress 10s ease-in-out forwards;}
+    @keyframes gps-progress{0%{width:0%}30%{width:40%}70%{width:75%}95%{width:92%}}
+    .error-box{background:rgba(255,107,107,.09);border:1px solid rgba(255,107,107,.25);border-radius:10px;padding:16px;text-align:center;color:var(--red);font-size:.85rem;line-height:1.6;}
+    .already-box{background:rgba(0,196,161,.08);border:1px solid rgba(0,196,161,.2);border-radius:12px;padding:20px;text-align:center;}
+    .already-box .a-icon{font-size:2rem;margin-bottom:10px;}
+    .already-box .a-name{font-size:1.05rem;font-weight:700;color:var(--mint);}
+    .already-box .a-time{font-size:.8rem;color:var(--sub);margin-top:4px;}
+    .already-box .a-note{font-size:.78rem;color:var(--sub);margin-top:10px;}
+    .dist-badge{display:inline-flex;align-items:center;gap:4px;font-size:.72rem;color:var(--mint);background:rgba(0,196,161,.1);border-radius:20px;padding:3px 10px;margin-bottom:14px;}
+    .config-warn{background:rgba(255,184,0,.08);border:1px solid rgba(255,184,0,.2);border-radius:10px;padding:16px;text-align:center;color:var(--yellow);font-size:.85rem;line-height:1.6;}
+    /* Success */
+    #v-success{align-items:center;justify-content:center;padding:24px;}
+    .success-box{background:var(--card);border:1px solid rgba(0,196,161,.2);border-radius:20px;padding:36px 24px;width:100%;max-width:340px;text-align:center;}
+    .success-check{width:68px;height:68px;background:rgba(0,196,161,.12);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.8rem;margin:0 auto 18px;border:2px solid rgba(0,196,161,.3);}
+    .success-name{font-size:1.3rem;font-weight:700;}
+    .success-class{font-size:.85rem;color:var(--sub);margin-top:3px;}
+    .success-time{font-size:2.2rem;font-weight:900;color:var(--mint);margin:14px 0 2px;font-variant-numeric:tabular-nums;}
+    .success-date{font-size:.78rem;color:var(--sub);}
+    .success-msg{font-size:.83rem;color:var(--text);margin-top:18px;line-height:1.7;}
+    .success-badge{display:inline-block;background:rgba(0,196,161,.12);color:var(--mint);font-size:.72rem;font-weight:700;padding:4px 14px;border-radius:20px;margin-top:14px;border:1px solid rgba(0,196,161,.2);}
+    .success-redirect{font-size:.72rem;color:var(--sub);margin-top:10px;font-variant-numeric:tabular-nums;}
+    /* Admin PIN */
+    #v-admin-pin{align-items:center;justify-content:center;padding:24px;}
+    .pin-box{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:32px 24px;width:100%;max-width:320px;text-align:center;}
+    .pin-logo{font-size:1.2rem;font-weight:900;color:var(--mint);margin-bottom:4px;}
+    .pin-title{font-size:.85rem;color:var(--sub);margin-bottom:24px;}
+    .pin-dots{display:flex;gap:14px;justify-content:center;margin-bottom:8px;}
+    .pin-dot{width:14px;height:14px;border-radius:50%;background:transparent;border:2px solid rgba(255,255,255,.2);transition:all .15s;}
+    .pin-dot.filled{background:var(--mint);border-color:var(--mint);}
+    #pin-error{color:var(--red);font-size:.78rem;height:22px;margin-bottom:12px;}
+    .numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:220px;margin:0 auto;}
+    .num-btn{padding:15px;background:var(--card2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:1.15rem;font-weight:500;font-family:var(--font);cursor:pointer;transition:background .12s;}
+    .num-btn:hover{background:rgba(0,196,161,.1);}.num-btn:active{background:rgba(0,196,161,.2);transform:scale(.95);}
+    .num-btn.del{color:var(--sub);font-size:.85rem;}
+    /* Admin Main */
+    #v-admin-main{justify-content:flex-start;width:100%;}
+    .admin-header{width:100%;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:10;}
+    .admin-logo{font-size:.9rem;font-weight:900;color:var(--mint);}
+    .admin-date{font-size:.68rem;color:var(--sub);margin-top:1px;}
+    .admin-tabs{display:flex;border-bottom:1px solid var(--border);width:100%;background:var(--card);}
+    .atab{flex:1;padding:13px 6px;text-align:center;font-size:.78rem;color:var(--sub);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;font-weight:500;}
+    .atab.active{color:var(--mint);border-bottom-color:var(--mint);font-weight:700;}
+    .admin-content{flex:1;padding:18px 16px;width:100%;max-width:600px;margin:0 auto;}
+    .tab-panel{display:none;}.tab-panel.active{display:block;}
+    .sec-title{font-size:.72rem;color:var(--sub);font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;margin-top:20px;}
+    .sec-title:first-child{margin-top:0;}
+    .astats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;}
+    .astat{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 10px;text-align:center;}
+    .astat-num{font-size:1.7rem;font-weight:900;line-height:1;}
+    .astat-label{font-size:.68rem;color:var(--sub);margin-top:4px;}
+    .class-sec{margin-bottom:18px;border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+    .class-head{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;background:var(--card2);border-bottom:1px solid var(--border);}
+    .class-head-name{font-size:.88rem;font-weight:700;}.class-head-time{font-size:.68rem;color:var(--sub);margin-top:1px;}
+    .class-count-badge{font-size:.75rem;color:var(--mint);font-weight:700;background:rgba(0,196,161,.1);padding:3px 10px;border-radius:20px;}
+    .srow{display:flex;align-items:center;padding:11px 14px;border-bottom:1px solid var(--border);background:var(--card);}
+    .srow:last-child{border-bottom:none;}.srow.present{border-left:3px solid var(--mint);}.srow.absent{border-left:3px solid transparent;}
+    .srow-ico{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.78rem;margin-right:11px;flex-shrink:0;}
+    .srow-ico.p{background:rgba(0,196,161,.12);}.srow-ico.a{background:var(--card2);}
+    .srow-name{flex:1;font-size:.88rem;font-weight:500;}
+    .srow-time{font-size:.75rem;color:var(--mint);font-weight:600;font-variant-numeric:tabular-nums;}
+    .srow-absent{font-size:.72rem;color:var(--sub);}
+    .srow-del{background:none;border:none;color:var(--sub);cursor:pointer;padding:4px 8px;border-radius:6px;font-size:.72rem;font-family:var(--font);transition:all .15s;}
+    .srow-del:hover{background:rgba(255,107,107,.12);color:var(--red);}
+    .add-form{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 14px;margin-bottom:14px;}
+    .row-flex{display:flex;gap:8px;align-items:flex-end;}
+    .row-flex input,.row-flex select{margin-bottom:0;}
+    .settings-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 14px;margin-bottom:14px;}
+    .settings-card p{font-size:.78rem;color:var(--sub);margin-bottom:10px;line-height:1.6;}
+    .url-display{word-break:break-all;font-size:.72rem;color:var(--mint);padding:10px;background:var(--card2);border-radius:8px;margin-top:8px;}
+    /* GPS Config */
+    .gps-config-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 14px;margin-bottom:14px;}
+    .gps-config-card p{font-size:.78rem;color:var(--sub);margin-bottom:12px;line-height:1.7;}
+    .gps-config-status{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:8px;font-size:.8rem;font-weight:600;margin-bottom:12px;}
+    .gps-config-status.ok{background:rgba(0,196,161,.1);color:var(--mint);border:1px solid rgba(0,196,161,.2);}
+    .gps-config-status.warn{background:rgba(255,184,0,.1);color:var(--yellow);border:1px solid rgba(255,184,0,.2);}
+    .gps-coords{font-size:.72rem;color:var(--sub);margin-bottom:12px;font-variant-numeric:tabular-nums;background:var(--card2);padding:8px 10px;border-radius:8px;}
+    .radius-row{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+    .radius-row label{margin-bottom:0;white-space:nowrap;}.radius-row input{margin-bottom:0;width:80px;}.radius-row span{font-size:.8rem;color:var(--sub);}
+    .empty{padding:14px;font-size:.8rem;color:var(--sub);text-align:center;}
+    .divider{height:1px;background:var(--border);margin:16px 0;}
+    .mt-12{margin-top:12px;}
+    .nav-link{font-size:.72rem;color:var(--sub);text-decoration:none;padding:6px 14px;border:1px solid var(--border);border-radius:20px;}
+    .toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(10px);background:var(--card2);border:1px solid var(--border);color:var(--text);padding:9px 20px;border-radius:100px;font-size:.82rem;font-weight:500;z-index:999;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;white-space:nowrap;}
+    .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  </style>
+</head>
+<body>
+
+<div id="v-loading" class="view active">
+  <div class="loader-logo">강서플라이미술학원</div>
+  <div class="loader-sub">출결관리 시스템</div>
+  <div class="spinner"></div>
+</div>
+
+<div id="v-setup" class="view">
+  <div class="setup-box">
+    <div class="setup-title">🎨 Firebase 초기 설정</div>
+    <div class="setup-desc">한 번만 설정하면 이 기기에 저장됩니다.</div>
+    <div class="setup-guide">
+      <b>설정 방법</b><br>
+      1. <b>firebase.google.com</b> → 프로젝트 생성<br>
+      2. 빌드 → <b>Realtime Database</b> → 데이터베이스 생성<br>
+      &nbsp;&nbsp;&nbsp;(지역: asia-southeast1, 테스트 모드)<br>
+      3. 프로젝트 설정 → 웹앱 추가 → 아래 정보 복사
+    </div>
+    <label>API Key *</label><input id="s-apikey" value="AIzaSyAxjLeGTFBbk5oSJb_dJ1LcHgQaks8g4H0" placeholder="AIzaSy..."/>
+    <label>Auth Domain *</label><input id="s-authdomain" value="fly-attendance.firebaseapp.com" placeholder="your-project.firebaseapp.com"/>
+    <label>Database URL *</label><input id="s-dburl" value="https://fly-attendance-default-rtdb.asia-southeast1.firebasedatabase.app" placeholder="https://your-project-default-rtdb.firebaseio.com"/>
+    <label>Project ID *</label><input id="s-projectid" value="fly-attendance" placeholder="your-project-id"/>
+    <label>App ID</label><input id="s-appid" value="1:664070644785:web:59d37ee28efb64e65e6110" placeholder="1:123...web:abc..."/>
+    <button class="btn btn-mint" onclick="saveSetup()">저장하고 시작하기</button>
+  </div>
+</div>
+
+<!-- 벽면 고정 QR -->
+<div id="v-wall" class="view">
+  <div class="wall-header">
+    <div class="wall-logo">강서플라이미술학원</div>
+    <div class="wall-date" id="wall-date"></div>
+  </div>
+  <div class="wall-body">
+    <div class="qr-wrap">
+      <p class="qr-label">📱 카메라로 QR코드를 스캔하여 출석 체크하세요</p>
+      <div class="qr-box" id="wall-qr"></div>
+      <p class="print-info">강서플라이미술학원 출결 QR</p>
+    </div>
+    <div class="wall-gps-badge"><div class="gps-dot"></div>GPS 위치 인증 적용 중</div>
+    <div class="wall-stats">
+      <div class="stat-card"><div class="stat-num" style="color:var(--mint)" id="wall-present">0</div><div class="stat-label">출석</div></div>
+      <div class="stat-card"><div class="stat-num" style="color:var(--red)" id="wall-absent">0</div><div class="stat-label">결석</div></div>
+      <div class="stat-card"><div class="stat-num" style="color:#5588ff" id="wall-total">0</div><div class="stat-label">전체</div></div>
+    </div>
+    <div class="wall-instruction"><strong>처음 오는 학생</strong>은 선생님께 먼저 등록을 요청하세요.</div>
+    <div style="display:flex;gap:10px" class="print-hide">
+      <a href="?view=admin" class="nav-link">관리자 →</a>
+      <button class="btn btn-outline btn-sm" onclick="window.print()">🖨️ QR 인쇄</button>
+    </div>
+  </div>
+</div>
+
+<!-- 학생 체크인 -->
+<div id="v-checkin" class="view">
+  <div class="checkin-box">
+    <div class="checkin-header">
+      <div class="checkin-icon">✏️</div>
+      <div class="checkin-title">강서플라이미술학원</div>
+      <div class="checkin-sub">출석 체크인</div>
+      <div class="checkin-time" id="checkin-now"></div>
+    </div>
+    <!-- GPS 미설정 -->
+    <div id="ci-noconfig" style="display:none" class="config-warn">
+      ⚠️ 관리자가 학원 GPS 위치를 아직 설정하지 않았습니다.<br>관리자 → 설정 탭에서 위치를 먼저 저장해주세요.
+    </div>
+    <!-- GPS 확인 중 -->
+    <div id="ci-gps" style="display:none" class="gps-state">
+      <div class="gps-state-icon">📍</div>
+      <div class="gps-state-title gps-checking">위치 확인 중...</div>
+      <div class="gps-state-desc">학원 내부인지 확인합니다.<br>위치 권한 요청 시 <strong>허용</strong>을 눌러주세요.</div>
+      <div class="gps-bar"><div class="gps-bar-fill" id="gps-bar-fill"></div></div>
+    </div>
+    <!-- 체크인 폼 -->
+    <div id="ci-form" style="display:none">
+      <div class="dist-badge" id="ci-dist-badge">📍 위치 확인됨</div>
+      <label>반 선택</label>
+      <select id="ci-class" onchange="onClassChange()">
+        <option value="">— 반을 선택하세요 —</option>
+        <option value="design">입시디자인반</option>
+        <option value="prep">입시준비반</option>
+        <option value="junior">초/중등반</option>
+      </select>
+      <label>이름 선택</label>
+      <select id="ci-name" disabled onchange="document.getElementById('ci-btn').disabled=!this.value">
+        <option value="">— 반을 먼저 선택하세요 —</option>
+      </select>
+      <button class="btn btn-mint mt-12" id="ci-btn" disabled onclick="doCheckin()">출석 체크인 ✓</button>
+    </div>
+    <!-- 이미 체크인 -->
+    <div id="ci-already" style="display:none" class="already-box">
+      <div class="a-icon">✅</div>
+      <div class="a-name" id="ci-aname"></div>
+      <div class="a-time" id="ci-atime"></div>
+      <div class="a-note">오늘 이미 출석 처리되었습니다.</div>
+    </div>
+    <!-- 에러 -->
+    <div id="ci-error" style="display:none" class="error-box"></div>
+    <button id="ci-retry" style="display:none;margin-top:12px" class="btn btn-outline" onclick="startCheckin()">📍 다시 시도</button>
+  </div>
+</div>
+
+<!-- 성공 -->
+<div id="v-success" class="view">
+  <div class="success-box">
+    <div class="success-check">✅</div>
+    <div class="success-name" id="suc-name"></div>
+    <div class="success-class" id="suc-class"></div>
+    <div class="success-time" id="suc-time"></div>
+    <div class="success-date" id="suc-date"></div>
+    <div class="success-msg">출석이 완료되었습니다.<br>오늘도 멋지게 그려요! 🎨</div>
+    <div class="success-badge">출석 완료</div>
+    <div class="success-redirect" id="suc-redirect"></div>
+  </div>
+</div>
+
+<!-- 관리자 PIN -->
+<div id="v-admin-pin" class="view">
+  <div class="pin-box">
+    <div class="pin-logo">강서플라이미술학원</div>
+    <div class="pin-title">관리자 PIN 입력 (초기값: 0000)</div>
+    <div class="pin-dots">
+      <div class="pin-dot" id="d0"></div><div class="pin-dot" id="d1"></div>
+      <div class="pin-dot" id="d2"></div><div class="pin-dot" id="d3"></div>
+    </div>
+    <div id="pin-error"></div>
+    <div class="numpad">
+      <button class="num-btn" onclick="pinInput('1')">1</button>
+      <button class="num-btn" onclick="pinInput('2')">2</button>
+      <button class="num-btn" onclick="pinInput('3')">3</button>
+      <button class="num-btn" onclick="pinInput('4')">4</button>
+      <button class="num-btn" onclick="pinInput('5')">5</button>
+      <button class="num-btn" onclick="pinInput('6')">6</button>
+      <button class="num-btn" onclick="pinInput('7')">7</button>
+      <button class="num-btn" onclick="pinInput('8')">8</button>
+      <button class="num-btn" onclick="pinInput('9')">9</button>
+      <div></div>
+      <button class="num-btn" onclick="pinInput('0')">0</button>
+      <button class="num-btn del" onclick="pinDel()">⌫</button>
+    </div>
+    <a href="?view=wall" class="nav-link" style="display:block;text-align:center;margin-top:20px">← 벽면 화면으로</a>
+  </div>
+</div>
+
+<!-- 관리자 메인 -->
+<div id="v-admin-main" class="view">
+  <div class="admin-header">
+    <div>
+      <div class="admin-logo">강서플라이미술학원</div>
+      <div class="admin-date" id="admin-date"></div>
+    </div>
+    <button class="btn btn-outline btn-sm" onclick="adminLogout()">로그아웃</button>
+  </div>
+  <div class="admin-tabs">
+    <div class="atab active" onclick="switchTab('today')">📋 오늘 출결</div>
+    <div class="atab" onclick="switchTab('students')">👥 학생 관리</div>
+    <div class="atab" onclick="switchTab('settings')">⚙️ 설정</div>
+  </div>
+  <div class="admin-content">
+
+    <div class="tab-panel active" id="tab-today">
+      <div class="astats">
+        <div class="astat"><div class="astat-num" style="color:var(--mint)" id="a-present">0</div><div class="astat-label">출석</div></div>
+        <div class="astat"><div class="astat-num" style="color:var(--red)" id="a-absent">0</div><div class="astat-label">결석</div></div>
+        <div class="astat"><div class="astat-num" style="color:#5588ff" id="a-total">0</div><div class="astat-label">전체</div></div>
+      </div>
+      <div id="today-body"></div>
+    </div>
+
+    <div class="tab-panel" id="tab-students">
+      <div class="sec-title">학생 추가</div>
+      <div class="add-form">
+        <label>반</label>
+        <select id="new-cls">
+          <option value="design">입시디자인반</option>
+          <option value="prep">입시준비반</option>
+          <option value="junior">초/중등반</option>
+        </select>
+        <label>이름</label>
+        <div class="row-flex">
+          <input id="new-name" placeholder="학생 이름" style="margin-bottom:0"/>
+          <button class="btn btn-mint btn-sm" onclick="addStudent()">추가</button>
+        </div>
+      </div>
+      <div class="sec-title">전체 학생 목록</div>
+      <div id="stu-body"></div>
+    </div>
+
+    <div class="tab-panel" id="tab-settings">
+      <!-- GPS 설정 핵심 -->
+      <div class="sec-title">📍 학원 GPS 위치 설정</div>
+      <div class="gps-config-card">
+        <p><strong style="color:var(--text)">학원 안에서</strong> 아래 버튼을 누르면 현재 위치가 저장됩니다.<br>이후 설정된 반경 내의 학생만 체크인이 가능합니다.</p>
+        <div class="gps-config-status warn" id="gps-status-badge">⚠️ GPS 위치가 아직 설정되지 않았습니다</div>
+        <div class="gps-coords" id="gps-coords-display">위도: —　경도: —</div>
+        <div class="radius-row">
+          <label>허용 반경</label>
+          <input id="gps-radius-input" type="number" value="150" min="50" max="500"/>
+          <span>m</span>
+        </div>
+        <button class="btn btn-yellow btn-sm" onclick="saveGPSLocation()" id="gps-save-btn">📍 현재 위치를 학원 위치로 저장</button>
+      </div>
+
+      <div class="divider"></div>
+      <div class="sec-title">벽면 QR 링크 (고정)</div>
+      <div class="settings-card">
+        <p>이 URL로 QR코드가 생성됩니다. <strong style="color:var(--text)">영구적으로 바뀌지 않으니 인쇄해서 벽에 붙여두세요.</strong></p>
+        <div class="url-display" id="wall-url-display"></div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-outline btn-sm" onclick="window.open(location.origin+location.pathname+'?view=wall','_blank')">화면으로 열기 ↗</button>
+          <button class="btn btn-mint btn-sm" onclick="printQR()">🖨️ QR 인쇄</button>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="sec-title">관리자 PIN 변경</div>
+      <div class="settings-card">
+        <p>새 PIN 4자리를 입력하세요.</p>
+        <div class="row-flex">
+          <input id="new-pin" placeholder="0000" maxlength="4" inputmode="numeric" style="margin-bottom:0"/>
+          <button class="btn btn-mint btn-sm" onclick="changePin()">변경</button>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="sec-title">Firebase 재설정</div>
+      <div class="settings-card">
+        <p>다른 Firebase 프로젝트로 변경할 때 사용합니다.</p>
+        <button class="btn btn-danger btn-sm" onclick="resetConfig()">초기화</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  강서플라이미술학원 출결관리 v2.0
+//  방식: 고정 QR (인쇄 가능) + GPS 위치 인증 (거짓 출석 방지)
+// ═══════════════════════════════════════════════════════════
+
+const CLASSES_CFG = {
+  design:{ name:'입시디자인반', time:'18:00 ~ 21:30' },
+  prep:  { name:'입시준비반',   time:'18:00 ~ 21:30' },
+  junior:{ name:'초/중등반',    time:'16:00 ~ 21:30' }
+};
+
+let db=null, studentsCache={}, attendanceCache={};
+let adminPIN='0000', gpsCfg={lat:0,lng:0,radius:150}, pinBuf='';
+
+// ── KST ──────────────────────────────────────────────────────
+function getTodayKey(){const k=new Date(Date.now()+9*3600000);return`${k.getUTCFullYear()}${String(k.getUTCMonth()+1).padStart(2,'0')}${String(k.getUTCDate()).padStart(2,'0')}`;}
+function getKSTTime(){return new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false,timeZone:'Asia/Seoul'});}
+function getKSTDate(){return new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'short',timeZone:'Asia/Seoul'});}
+
+// ── GPS ───────────────────────────────────────────────────────
+function haversine(la1,lo1,la2,lo2){
+  const R=6371000,r=d=>d*Math.PI/180,dLa=r(la2-la1),dLo=r(lo2-lo1);
+  const a=Math.sin(dLa/2)**2+Math.cos(r(la1))*Math.cos(r(la2))*Math.sin(dLo/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+function getPosition(){
+  return new Promise((resolve,reject)=>{
+    if(!navigator.geolocation){reject('GPS를 지원하지 않는 기기입니다.');return;}
+    navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:true,timeout:12000,maximumAge:0});
+  });
+}
+
+async function verifyLocation(){
+  if(!gpsCfg.lat&&!gpsCfg.lng) throw '관리자가 학원 GPS 위치를 설정하지 않았습니다.';
+  let pos;
+  try{ pos=await getPosition(); }
+  catch(e){
+    if(e.code===1) throw '위치 권한을 허용해주세요.\n(설정 → 사파리/크롬 → 위치 → 허용)';
+    if(e.code===3) throw 'GPS 응답 시간 초과. 야외에서 다시 시도해보세요.';
+    throw 'GPS 오류가 발생했습니다. 다시 시도해주세요.';
+  }
+  const dist=Math.round(haversine(pos.coords.latitude,pos.coords.longitude,gpsCfg.lat,gpsCfg.lng));
+  if(dist>gpsCfg.radius) throw `학원에서 ${dist}m 떨어진 곳입니다.\n학원 건물 안에서 스캔해주세요. (허용 반경 ${gpsCfg.radius}m)`;
+  return dist;
+}
+
+// ── UI ───────────────────────────────────────────────────────
+function showView(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.getElementById(id).classList.add('active');}
+function showToast(msg,ms=2200){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),ms);}
+function getParam(k){return new URLSearchParams(location.search).get(k);}
+
+// ── Config ───────────────────────────────────────────────────
+function loadConfig(){try{return JSON.parse(localStorage.getItem('fly_cfg')||'null');}catch{return null;}}
+function saveSetup(){
+  const cfg={apiKey:document.getElementById('s-apikey').value.trim(),authDomain:document.getElementById('s-authdomain').value.trim(),databaseURL:document.getElementById('s-dburl').value.trim(),projectId:document.getElementById('s-projectid').value.trim(),appId:document.getElementById('s-appid').value.trim()};
+  if(!cfg.apiKey||!cfg.databaseURL||!cfg.projectId){showToast('필수 항목을 입력해주세요');return;}
+  localStorage.setItem('fly_cfg',JSON.stringify(cfg));location.reload();
+}
+function resetConfig(){if(!confirm('Firebase 설정을 초기화할까요?\n학생 데이터는 Firebase에 보존됩니다.'))return;localStorage.removeItem('fly_cfg');location.reload();}
+
+// ── Firebase ─────────────────────────────────────────────────
+function initFirebase(cfg){if(!firebase.apps.length)firebase.initializeApp(cfg);db=firebase.database();}
+
+function listenData(){
+  const key=getTodayKey();
+  db.ref(`attendance/${key}`).on('value',snap=>{attendanceCache=snap.val()||{};updateStats();renderTodayBody();});
+  db.ref('students').on('value',snap=>{studentsCache=snap.val()||{};updateStats();renderTodayBody();renderStudentList();});
+  db.ref('config').on('value',snap=>{
+    const c=snap.val()||{};
+    adminPIN=c.adminPin||'0000';
+    gpsCfg={lat:c.gpsLat||0,lng:c.gpsLng||0,radius:c.gpsRadius||150};
+    updateGPSStatusUI();
+  });
+}
+
+// ── Routing ──────────────────────────────────────────────────
+async function route(){
+  const cfg=loadConfig();
+  if(!cfg){showView('v-setup');return;}
+  initFirebase(cfg);listenData();
+  const view=getParam('view')||'wall';
+  if(view==='wall') startWall();
+  else if(view==='checkin') startCheckin();
+  else if(view==='admin') showView('v-admin-pin');
+  else startWall();
+}
+
+// ── Wall ─────────────────────────────────────────────────────
+function startWall(){
+  showView('v-wall');
+  document.getElementById('wall-date').textContent=getKSTDate();
+  const url=`${location.origin}${location.pathname}?view=checkin`;
+  document.getElementById('wall-url-display').textContent=url;
+  const box=document.getElementById('wall-qr');
+  box.innerHTML='';
+  try{new QRCode(box,{text:url,width:220,height:220,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M});}
+  catch(e){box.textContent='QR 생성 오류';}
+}
+
+function updateStats(){
+  const total=Object.values(studentsCache).filter(s=>s.active!==false).length;
+  const present=Object.keys(attendanceCache).length;
+  const absent=Math.max(0,total-present);
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  set('wall-present',present);set('wall-absent',absent);set('wall-total',total);
+  set('a-present',present);set('a-absent',absent);set('a-total',total);
+}
+
+function printQR(){window.open(location.origin+location.pathname+'?view=wall','_blank');setTimeout(()=>{},500);}
+
+// ── Checkin ──────────────────────────────────────────────────
+async function startCheckin(){
+  showView('v-checkin');
+  const cl=document.getElementById('checkin-now');
+  cl.textContent=getKSTTime();
+  if(!window._clockTid) window._clockTid=setInterval(()=>{cl.textContent=getKSTTime();},1000);
+
+  ['ci-noconfig','ci-gps','ci-form','ci-already','ci-error','ci-retry'].forEach(id=>{
+    document.getElementById(id).style.display='none';
+  });
+
+  // GPS 설정 재확인
+  if(!gpsCfg.lat&&!gpsCfg.lng){
+    const snap=await db.ref('config').once('value');
+    const c=snap.val()||{};
+    gpsCfg={lat:c.gpsLat||0,lng:c.gpsLng||0,radius:c.gpsRadius||150};
+  }
+
+  if(!gpsCfg.lat&&!gpsCfg.lng){
+    document.getElementById('ci-noconfig').style.display='block';
+    return;
+  }
+
+  // 학생 데이터 로드
+  if(Object.keys(studentsCache).length===0){
+    const snap=await db.ref('students').once('value');
+    studentsCache=snap.val()||{};
+  }
+
+  // GPS bar 애니메이션 재시작
+  document.getElementById('ci-gps').style.display='block';
+  const bar=document.getElementById('gps-bar-fill');
+  bar.style.animation='none';bar.offsetHeight;bar.style.animation='';
+
+  try{
+    const dist=await verifyLocation();
+    document.getElementById('ci-gps').style.display='none';
+    document.getElementById('ci-form').style.display='block';
+    document.getElementById('ci-dist-badge').textContent=`📍 학원까지 ${dist}m — 위치 인증 완료`;
+  }catch(msg){
+    document.getElementById('ci-gps').style.display='none';
+    document.getElementById('ci-error').style.display='block';
+    document.getElementById('ci-error').innerHTML='⚠️ '+String(msg).replace(/\n/g,'<br>');
+    document.getElementById('ci-retry').style.display='block';
+  }
+}
+
+function onClassChange(){
+  const cls=document.getElementById('ci-class').value;
+  const sel=document.getElementById('ci-name');
+  sel.innerHTML='<option value="">— 이름 선택 —</option>';
+  sel.disabled=!cls;
+  document.getElementById('ci-btn').disabled=true;
+  if(!cls)return;
+  Object.entries(studentsCache)
+    .filter(([,s])=>s.class===cls&&s.active!==false)
+    .sort((a,b)=>a[1].name.localeCompare(b[1].name,'ko'))
+    .forEach(([id,s])=>{const o=document.createElement('option');o.value=id;o.textContent=s.name;sel.appendChild(o);});
+}
+
+async function doCheckin(){
+  const cls=document.getElementById('ci-class').value;
+  const sid=document.getElementById('ci-name').value;
+  if(!cls||!sid){showToast('반과 이름을 선택해주세요');return;}
+  const student=studentsCache[sid];
+  const todayKey=getTodayKey();
+  const ex=await db.ref(`attendance/${todayKey}/${sid}`).once('value');
+  if(ex.exists()){
+    const d=ex.val();
+    document.getElementById('ci-form').style.display='none';
+    document.getElementById('ci-already').style.display='block';
+    document.getElementById('ci-aname').textContent=`${student.name}  (${CLASSES_CFG[cls].name})`;
+    document.getElementById('ci-atime').textContent=`입실 시간: ${d.time}`;
+    return;
+  }
+  const timeNow=getKSTTime().slice(0,5);
+  await db.ref(`attendance/${todayKey}/${sid}`).set({name:student.name,class:cls,time:timeNow,timestamp:Date.now()});
+  showView('v-success');
+  document.getElementById('suc-name').textContent=student.name;
+  document.getElementById('suc-class').textContent=CLASSES_CFG[cls].name;
+  document.getElementById('suc-time').textContent=timeNow;
+  document.getElementById('suc-date').textContent=getKSTDate();
+  let count=4;
+  const rd=document.getElementById('suc-redirect');
+  rd.textContent=`${count}초 후 자동으로 돌아갑니다`;
+  const tick=setInterval(()=>{count--;if(count<0){clearInterval(tick);location.href=`${location.origin}${location.pathname}?view=checkin`;}else rd.textContent=`${count}초 후 자동으로 돌아갑니다`;},1000);
+}
+
+// ── Admin PIN ────────────────────────────────────────────────
+function pinInput(n){
+  if(pinBuf.length>=4)return;pinBuf+=n;renderPinDots();
+  if(pinBuf.length===4){
+    setTimeout(()=>{
+      if(pinBuf===adminPIN){
+        showView('v-admin-main');
+        document.getElementById('admin-date').textContent=getKSTDate();
+        document.getElementById('wall-url-display').textContent=location.origin+location.pathname+'?view=wall';
+        updateGPSStatusUI();
+      }else{document.getElementById('pin-error').textContent='잘못된 PIN입니다.';pinBuf='';renderPinDots();}
+    },120);
+  }
+}
+function pinDel(){pinBuf=pinBuf.slice(0,-1);renderPinDots();document.getElementById('pin-error').textContent='';}
+function renderPinDots(){for(let i=0;i<4;i++)document.getElementById(`d${i}`).classList.toggle('filled',i<pinBuf.length);}
+function adminLogout(){pinBuf='';renderPinDots();document.getElementById('pin-error').textContent='';showView('v-admin-pin');}
+
+// ── Admin Tabs ───────────────────────────────────────────────
+function switchTab(tab){
+  const tabs=['today','students','settings'];
+  document.querySelectorAll('.atab').forEach((el,i)=>el.classList.toggle('active',tabs[i]===tab));
+  document.querySelectorAll('.tab-panel').forEach((el,i)=>el.classList.toggle('active',tabs[i]===tab));
+}
+
+// ── Today ────────────────────────────────────────────────────
+function renderTodayBody(){
+  const el=document.getElementById('today-body');
+  if(!el||!document.getElementById('v-admin-main').classList.contains('active'))return;
+  let html='';
+  Object.entries(CLASSES_CFG).forEach(([cid,cls])=>{
+    const stus=Object.entries(studentsCache).filter(([,s])=>s.class===cid&&s.active!==false);
+    const presentN=stus.filter(([sid])=>attendanceCache[sid]).length;
+    const rows=stus.sort((a,b)=>(attendanceCache[a[0]]?.time||'zzz').localeCompare(attendanceCache[b[0]]?.time||'zzz'))
+      .map(([sid,s])=>{const att=attendanceCache[sid];return`<div class="srow ${att?'present':'absent'}"><div class="srow-ico ${att?'p':'a'}">${att?'✅':'⬜'}</div><div class="srow-name">${s.name}</div>${att?`<div class="srow-time">${att.time}</div>`:`<div class="srow-absent">미출석</div>`}</div>`;}).join('');
+    html+=`<div class="class-sec"><div class="class-head"><div><div class="class-head-name">${cls.name}</div><div class="class-head-time">${cls.time}</div></div><div class="class-count-badge">${presentN}/${stus.length}명</div></div>${stus.length===0?'<div class="empty">등록된 학생이 없습니다</div>':rows}</div>`;
+  });
+  el.innerHTML=html||'<div class="empty">학생 데이터 없음</div>';
+}
+
+// ── Students ─────────────────────────────────────────────────
+async function addStudent(){
+  const cls=document.getElementById('new-cls').value;
+  const name=document.getElementById('new-name').value.trim();
+  if(!name){showToast('이름을 입력해주세요');return;}
+  await db.ref(`students/S${Date.now()}`).set({name,class:cls,active:true});
+  document.getElementById('new-name').value='';
+  showToast(`${name} 학생 추가 완료 ✓`);
+}
+async function deleteStudent(sid,name){
+  if(!confirm(`${name} 학생을 삭제할까요?`))return;
+  await db.ref(`students/${sid}`).remove();showToast(`${name} 삭제됨`);
+}
+function renderStudentList(){
+  const el=document.getElementById('stu-body');if(!el)return;
+  let html='';
+  Object.entries(CLASSES_CFG).forEach(([cid,cls])=>{
+    const stus=Object.entries(studentsCache).filter(([,s])=>s.class===cid&&s.active!==false).sort((a,b)=>a[1].name.localeCompare(b[1].name,'ko'));
+    html+=`<div class="class-sec"><div class="class-head"><span class="class-head-name">${cls.name}</span><span class="class-count-badge">${stus.length}명</span></div>${stus.length===0?'<div class="empty">학생 없음</div>':stus.map(([sid,s])=>`<div class="srow"><div class="srow-name">${s.name}</div><button class="srow-del" onclick="deleteStudent('${sid}','${s.name}')">삭제</button></div>`).join('')}</div>`;
+  });
+  el.innerHTML=html;
+}
+
+// ── GPS Settings ─────────────────────────────────────────────
+async function saveGPSLocation(){
+  const btn=document.getElementById('gps-save-btn');
+  btn.textContent='📍 위치 가져오는 중...';btn.disabled=true;
+  try{
+    const pos=await getPosition();
+    const lat=pos.coords.latitude,lng=pos.coords.longitude;
+    const radius=parseInt(document.getElementById('gps-radius-input').value)||150;
+    await db.ref('config').update({gpsLat:lat,gpsLng:lng,gpsRadius:radius});
+    gpsCfg={lat,lng,radius};updateGPSStatusUI();
+    showToast('✅ 학원 위치가 저장되었습니다!');
+  }catch(e){
+    if(e.code===1)showToast('위치 권한을 허용해주세요');
+    else showToast('GPS 오류: '+(e.message||e));
+  }
+  btn.textContent='📍 현재 위치를 학원 위치로 저장';btn.disabled=false;
+}
+
+function updateGPSStatusUI(){
+  const badge=document.getElementById('gps-status-badge');
+  const coords=document.getElementById('gps-coords-display');
+  const radiusInput=document.getElementById('gps-radius-input');
+  if(!badge)return;
+  if(gpsCfg.lat||gpsCfg.lng){
+    badge.className='gps-config-status ok';badge.textContent='✅ GPS 위치 설정 완료';
+    coords.textContent=`위도: ${gpsCfg.lat.toFixed(6)}　경도: ${gpsCfg.lng.toFixed(6)}`;
+    if(radiusInput)radiusInput.value=gpsCfg.radius;
+  }else{
+    badge.className='gps-config-status warn';badge.textContent='⚠️ GPS 위치가 아직 설정되지 않았습니다';
+    coords.textContent='위도: —　경도: —';
+  }
+}
+
+async function changePin(){
+  const v=document.getElementById('new-pin').value.trim();
+  if(!/^\d{4}$/.test(v)){showToast('4자리 숫자를 입력해주세요');return;}
+  await db.ref('config/adminPin').set(v);document.getElementById('new-pin').value='';showToast('PIN 변경 완료 ✓');
+}
+
+window.addEventListener('DOMContentLoaded',()=>{route().catch(()=>showView('v-setup'));});
+</script>
+</body>
+</html>
