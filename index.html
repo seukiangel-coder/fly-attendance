@@ -42,7 +42,7 @@
     .btn-outline{background:white;border:1px solid var(--border);color:var(--sub);}
     .btn-outline:hover{border-color:var(--blue);color:var(--blue);background:white;}
     .btn-yellow{background:var(--yellow);color:#000;}.btn-sm{padding:7px 14px;font-size:.78rem;border-radius:8px;width:auto;display:inline-block;}
-    .btn-danger{background:var(--red);}
+    .btn-danger{background:var(--red);color:#fff;}
     
     /* Setup */
     #v-setup{align-items:center;justify-content:center;padding:24px;}
@@ -740,7 +740,10 @@ async function startCheckin(){
   const radius=await db.ref('config/gpsRadius').once('value');
   
   if(!lat.exists()||!lng.exists()){
-    document.getElementById('ci-config-warn').style.display='block';
+    // GPS 미설정 - 경고 표시하고 바로 체크인 진행
+    showToast('⚠️ GPS 미설정 - 테스트 모드');
+    document.getElementById('ci-dist-badge').textContent='GPS 미설정 (테스트 모드)';
+    document.getElementById('ci-type-select').style.display='block';
     return;
   }
   
@@ -860,12 +863,14 @@ async function submitStudentCheckin(){
   const lessonType=document.querySelector('input[name="lesson-type"]:checked').value;
   const now=new Date();
   const time=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const dayOfWeek=now.getDay();
   
-  // 체크인 당시의 수업시간 가져오기
-  const dayOfWeek=['sun','mon','tue','wed','thu','fri','sat'][now.getDay()];
-  const classSchedule=CLASS_SCHEDULES[student.class]||{};
-  const classStartTime=classSchedule[dayOfWeek]||'18:00';
-  const isLate=time>classStartTime;
+  // 토요일인 경우 타임 선택 표시
+  if(dayOfWeek===6){
+    // 타임 선택 UI 표시
+    showTimeSelection(sid,student,lessonType,time,now);
+    return;
+  }
   
   const record={
     name:student.name,
@@ -873,13 +878,46 @@ async function submitStudentCheckin(){
     type:lessonType,
     time:time,
     timestamp:now.getTime(),
-    late:isLate,
-    classTime:classStartTime  // 체크인 당시 수업시간 저장
+    timeSlot:1  // 평일은 1타임
   };
   
   await db.ref(`attendance/${currentDate}/students/${sid}`).set(record);
   
-  showSuccessView(student.name,lessonType,isLate);
+  showSuccessView(student.name,lessonType,false);
+}
+
+function showTimeSelection(sid,student,lessonType,time,now){
+  document.getElementById('ci-lesson-type').style.display='none';
+  document.getElementById('ci-student-submit').innerHTML=`
+    <label>타임 선택 (토요일)</label>
+    <div class="radio-group">
+      <div class="radio-item">
+        <input type="radio" id="time-slot-1" name="time-slot" value="1" checked>
+        <label for="time-slot-1">1타임</label>
+      </div>
+      <div class="radio-item">
+        <input type="radio" id="time-slot-2" name="time-slot" value="2">
+        <label for="time-slot-2">2타임</label>
+      </div>
+    </div>
+    <button class="btn" onclick="submitWithTimeSlot('${sid}','${student.name}','${student.class}','${lessonType}','${time}',${now.getTime()})">체크인</button>
+  `;
+}
+
+async function submitWithTimeSlot(sid,name,cls,lessonType,time,timestamp){
+  const timeSlot=parseInt(document.querySelector('input[name="time-slot"]:checked').value);
+  
+  const record={
+    name:name,
+    class:cls,
+    type:lessonType,
+    time:time,
+    timestamp:timestamp,
+    timeSlot:timeSlot
+  };
+  
+  await db.ref(`attendance/${currentDate}/students/${sid}`).set(record);
+  showSuccessView(name,lessonType,false);
 }
 
 async function loadStaffList(){
@@ -1307,46 +1345,42 @@ async function loadMonthlyReport(){
   const holidaySnap=await db.ref('config/holidayDates').once('value');
   const holidays=holidaySnap.val()||[];
   
-  let totalPresent=0,totalLate=0,totalAbsent=0;
-  const studentStats={};
+  const today=new Date();
+  const todayKey=`${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
   
+  const studentStats={};
   const allStudents=[...studentsByClass.design,...studentsByClass.prep,...studentsByClass.junior];
+  
   allStudents.forEach(s=>{
-    let present=0,late=0,absent=0,makeup=0;
+    let present=0,makeup=0;
     for(let d=1;d<=daysInMonth;d++){
       const dateKey=`${y}${String(m).padStart(2,'0')}${String(d).padStart(2,'0')}`;
+      if(dateKey>todayKey)continue;
+      
       const dayOfWeek=new Date(y,m-1,d).getDay();
-      const dayName=['sun','mon','tue','wed','thu','fri','sat'][dayOfWeek];
-      if(dayOfWeek===0||dayOfWeek===6)continue;
+      if(dayOfWeek===0)continue;
       
       const isHoliday=holidays.includes(dateKey);
-      if(isHoliday)continue; // 재량휴원일은 통계에서 제외
+      if(isHoliday)continue;
       
-      if(attendance[dateKey]&&attendance[dateKey][s.id]){
-        const rec=attendance[dateKey][s.id];
-        if(rec.type==='makeup'){
-          makeup++;
-        }else{
-          // 저장된 classTime 사용 (없으면 현재 설정의 해당 요일 시간)
-          const currentClassSchedule=CLASS_SCHEDULES[s.class]||{};
-          const recordClassTime=rec.classTime||currentClassSchedule[dayName]||'18:00';
-          const wasLate=rec.time>recordClassTime;
-          if(wasLate){
-            late++;
-          }else{
-            present++;
+      if(dayOfWeek===6){
+        for(let slot=1;slot<=2;slot++){
+          const rec=attendance[dateKey]&&Object.values(attendance[dateKey]).find(r=>r.name===s.name&&r.timeSlot===slot);
+          if(rec){
+            if(rec.type==='makeup')makeup++;
+            else present++;
           }
         }
       }else{
-        absent++;
+        const rec=attendance[dateKey]&&Object.values(attendance[dateKey]).find(r=>r.name===s.name);
+        if(rec){
+          if(rec.type==='makeup')makeup++;
+          else present++;
+        }
       }
     }
-    studentStats[s.id]={present,late,absent,makeup};
-    totalPresent+=present;
-    totalLate+=late;
-    totalAbsent+=absent;
+    studentStats[s.id]={present,makeup};
   });
-  
   
   const classNames={design:'입시디자인반',prep:'입시준비반',junior:'초/중등반'};
   const classTimes={design:'18:00~21:30',prep:'18:00~21:30',junior:'16:00~21:30'};
@@ -1354,19 +1388,30 @@ async function loadMonthlyReport(){
   let html='<table class="report-table"><thead><tr>';
   html+='<th rowspan="2" class="class-col">반</th>';
   html+='<th rowspan="2" class="name-col">이름</th>';
-  html+='<th colspan="'+daysInMonth+'">날짜</th>';
-  html+='<th colspan="4">요약</th>';
+  
+  let colCount=0;
+  for(let d=1;d<=daysInMonth;d++){
+    const dow=new Date(y,m-1,d).getDay();
+    if(dow===6)colCount+=2;
+    else colCount+=1;
+  }
+  
+  html+=`<th colspan="${colCount}">날짜</th>`;
+  html+='<th colspan="2">요약</th>';
   html+='</tr><tr>';
   
   for(let d=1;d<=daysInMonth;d++){
     const dayOfWeek=new Date(y,m-1,d).getDay();
     const isWeekend=dayOfWeek===0||dayOfWeek===6;
-    html+=`<th class="${isWeekend?'weekend':''}">${d}</th>`;
+    if(dayOfWeek===6){
+      html+=`<th class="${isWeekend?'weekend':''}">${d}-1</th>`;
+      html+=`<th class="${isWeekend?'weekend':''}">${d}-2</th>`;
+    }else{
+      html+=`<th class="${isWeekend?'weekend':''}">${d}</th>`;
+    }
   }
   
   html+='<th class="summary-col">출석</th>';
-  html+='<th class="summary-col">지각</th>';
-  html+='<th class="summary-col">결석</th>';
   html+='<th class="summary-col">보충</th>';
   html+='</tr></thead><tbody>';
   
@@ -1384,45 +1429,61 @@ async function loadMonthlyReport(){
       for(let d=1;d<=daysInMonth;d++){
         const dateKey=`${y}${String(m).padStart(2,'0')}${String(d).padStart(2,'0')}`;
         const dayOfWeek=new Date(y,m-1,d).getDay();
-        const dayName=['sun','mon','tue','wed','thu','fri','sat'][dayOfWeek];
         const isWeekend=dayOfWeek===0||dayOfWeek===6;
         const isHoliday=holidays.includes(dateKey);
+        const isFuture=dateKey>todayKey;
         
-        if(isWeekend){
+        if(dayOfWeek===0){
           html+=`<td class="weekend">-</td>`;
-        }else if(isHoliday){
-          html+=`<td style="background:rgba(255,184,0,.1);color:var(--yellow);font-size:.7rem;">휴원</td>`;
-        }else if(attendance[dateKey]&&attendance[dateKey][s.id]){
-          const rec=attendance[dateKey][s.id];
-          if(rec.type==='makeup'){
-            html+=`<td class="makeup">□</td>`;
+        }else if(isFuture){
+          if(dayOfWeek===6){
+            html+=`<td class="weekend">-</td><td class="weekend">-</td>`;
           }else{
-            // 저장된 classTime 사용
-            const currentClassSchedule=CLASS_SCHEDULES[s.class]||{};
-            const recordClassTime=rec.classTime||currentClassSchedule[dayName]||'18:00';
-            const wasLate=rec.time>recordClassTime;
-            if(wasLate){
-              html+=`<td class="late">▲</td>`;
+            html+=`<td class="weekend">-</td>`;
+          }
+        }else if(isHoliday){
+          if(dayOfWeek===6){
+            html+=`<td style="background:rgba(255,184,0,.1);color:var(--yellow);font-size:.7rem;">휴원</td>`;
+            html+=`<td style="background:rgba(255,184,0,.1);color:var(--yellow);font-size:.7rem;">휴원</td>`;
+          }else{
+            html+=`<td style="background:rgba(255,184,0,.1);color:var(--yellow);font-size:.7rem;">휴원</td>`;
+          }
+        }else if(dayOfWeek===6){
+          for(let slot=1;slot<=2;slot++){
+            const rec=attendance[dateKey]&&Object.values(attendance[dateKey]).find(r=>r.name===s.name&&r.timeSlot===slot);
+            if(rec){
+              if(rec.type==='makeup'){
+                html+=`<td class="makeup">□</td>`;
+              }else{
+                html+=`<td class="present">○</td>`;
+              }
             }else{
-              html+=`<td class="present">○</td>`;
+              html+=`<td class="absent">×</td>`;
             }
           }
         }else{
-          html+=`<td class="absent">×</td>`;
+          const rec=attendance[dateKey]&&Object.values(attendance[dateKey]).find(r=>r.name===s.name);
+          if(rec){
+            if(rec.type==='makeup'){
+              html+=`<td class="makeup">□</td>`;
+            }else{
+              html+=`<td class="present">○</td>`;
+            }
+          }else{
+            html+=`<td class="absent">×</td>`;
+          }
         }
       }
       
       const stats=studentStats[s.id];
       html+=`<td class="summary-col present">${stats.present}</td>`;
-      html+=`<td class="summary-col late">${stats.late}</td>`;
-      html+=`<td class="summary-col absent">${stats.absent}</td>`;
       html+=`<td class="summary-col makeup">${stats.makeup}</td>`;
       html+=`</tr>`;
     });
   });
   
   if(allStudents.length===0){
-    html+=`<tr><td colspan="${daysInMonth+6}" style="text-align:center;color:var(--sub);padding:40px">등록된 학생이 없습니다</td></tr>`;
+    html+=`<tr><td colspan="${colCount+4}" style="text-align:center;color:var(--sub);padding:40px">등록된 학생이 없습니다</td></tr>`;
   }
   
   html+='</tbody></table>';
@@ -1468,6 +1529,9 @@ async function loadStaffMonthlyReport(){
   
   const holidaySnap=await db.ref('config/holidayDates').once('value');
   const holidays=holidaySnap.val()||[];
+  
+  const today=new Date();
+  const todayKey=`${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
   
   const dayNames=['sun','mon','tue','wed','thu','fri','sat'];
   const dayLabels=['일','월','화','수','목','금','토'];
@@ -1516,8 +1580,11 @@ async function loadStaffMonthlyReport(){
       const isWorkDay=!!workTime;
       const isHoliday=holidays.includes(dateKey);
       const isAnnualLeave=annualLeave.includes(dateKey);
+      const isFuture=dateKey>todayKey;
       
-      if(isWeekend){
+      if(isFuture){
+        html+=`<td class="weekend">-</td>`;
+      }else if(isWeekend){
         if(isWorkDay){
           if(isHoliday){
             html+=`<td style="background:rgba(255,184,0,.1);color:var(--yellow);font-size:.7rem;">휴원</td>`;
@@ -1526,7 +1593,8 @@ async function loadStaffMonthlyReport(){
           }else{
             const rec=attendance[dateKey]&&attendance[dateKey][s.id];
             if(rec&&rec.checkin){
-              const isLate=rec.checkin>workTime;
+              const recordWorkTime=rec.workTime||workTime;
+              const isLate=rec.checkin>recordWorkTime;
               if(isLate)lateCount++;
               const cls=isLate?'late':'present';
               html+=`<td class="${cls}">${rec.checkin}<br>${rec.checkout||'-'}</td>`;
@@ -1548,7 +1616,6 @@ async function loadStaffMonthlyReport(){
         }else{
           const rec=attendance[dateKey]&&attendance[dateKey][s.id];
           if(rec&&rec.checkin){
-            // 저장된 workTime 사용 (없으면 현재 설정)
             const recordWorkTime=rec.workTime||workTime;
             const isLate=rec.checkin>recordWorkTime;
             if(isLate)lateCount++;
