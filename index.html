@@ -42,7 +42,7 @@
     .btn-outline{background:white;border:1px solid var(--border);color:var(--sub);}
     .btn-outline:hover{border-color:var(--blue);color:var(--blue);background:white;}
     .btn-yellow{background:var(--yellow);color:#000;}.btn-sm{padding:7px 14px;font-size:.78rem;border-radius:8px;width:auto;display:inline-block;}
-    .btn-danger{background:var(--red);color:#fff;}
+    .btn-danger{background:var(--red)!important;color:#fff!important;border:none!important;outline:none!important;font-weight:700!important;}
     
     /* Setup */
     #v-setup{align-items:center;justify-content:center;padding:24px;}
@@ -185,7 +185,7 @@
     .report-table{width:100%;border-collapse:collapse;font-size:.72rem;min-width:800px;}
     .report-table th{background:var(--card);padding:10px 6px;text-align:center;font-weight:600;color:var(--text);border:1px solid var(--border);white-space:nowrap;}
     .report-table td{padding:8px 6px;border:1px solid var(--border);text-align:center;}
-    .report-table .class-col{background:var(--card);font-weight:700;color:var(--blue);font-size:.75rem;text-align:center;vertical-align:middle;border-right:2px solid var(--blue);min-width:90px;}
+    .report-table .class-col{background:var(--card);font-weight:700;color:var(--blue);font-size:.75rem;text-align:center;vertical-align:middle;border-right:1px solid var(--border);min-width:90px;}
     .report-table .name-col{text-align:left;padding-left:12px;font-weight:600;min-width:80px;}
     .report-table .weekend{background:var(--card);color:var(--sub);}
     .report-table .summary-col{background:var(--card);font-weight:700;color:var(--blue);}
@@ -740,10 +740,7 @@ async function startCheckin(){
   const radius=await db.ref('config/gpsRadius').once('value');
   
   if(!lat.exists()||!lng.exists()){
-    // GPS 미설정 - 경고 표시하고 바로 체크인 진행
-    showToast('⚠️ GPS 미설정 - 테스트 모드');
-    document.getElementById('ci-dist-badge').textContent='GPS 미설정 (테스트 모드)';
-    document.getElementById('ci-type-select').style.display='block';
+    document.getElementById('ci-config-warn').style.display='block';
     return;
   }
   
@@ -867,8 +864,21 @@ async function submitStudentCheckin(){
   
   // 토요일인 경우 타임 선택 표시
   if(dayOfWeek===6){
+    // 이미 체크인한 타임이 있는지 확인
+    const slot1Exists=await db.ref(`attendance/${currentDate}/students/${sid}_slot1`).once('value');
+    const slot2Exists=await db.ref(`attendance/${currentDate}/students/${sid}_slot2`).once('value');
+    
+    if(slot1Exists.exists()&&slot2Exists.exists()){
+      // 둘 다 체크인 완료
+      document.getElementById('ci-student-flow').style.display='none';
+      document.getElementById('ci-already-name').textContent=student.name;
+      document.getElementById('ci-already-time').textContent=`체크인 완료: 1타임, 2타임`;
+      document.getElementById('ci-already').style.display='block';
+      return;
+    }
+    
     // 타임 선택 UI 표시
-    showTimeSelection(sid,student,lessonType,time,now);
+    showTimeSelection(sid,student,lessonType,time,now,slot1Exists.exists(),slot2Exists.exists());
     return;
   }
   
@@ -883,41 +893,56 @@ async function submitStudentCheckin(){
   
   await db.ref(`attendance/${currentDate}/students/${sid}`).set(record);
   
-  showSuccessView(student.name,lessonType,false);
+  showSuccessView(student.name,lessonType,false,null);
 }
 
-function showTimeSelection(sid,student,lessonType,time,now){
+function showTimeSelection(sid,student,lessonType,time,now,slot1Done,slot2Done){
   document.getElementById('ci-lesson-type').style.display='none';
+  
+  const slot1Html=slot1Done 
+    ? `<div class="radio-item"><input type="checkbox" id="time-slot-1" name="time-slot" value="1" disabled checked><label for="time-slot-1" style="opacity:0.5">1타임 (완료)</label></div>`
+    : `<div class="radio-item"><input type="checkbox" id="time-slot-1" name="time-slot" value="1" checked><label for="time-slot-1">1타임</label></div>`;
+  
+  const slot2Html=slot2Done
+    ? `<div class="radio-item"><input type="checkbox" id="time-slot-2" name="time-slot" value="2" disabled checked><label for="time-slot-2" style="opacity:0.5">2타임 (완료)</label></div>`
+    : `<div class="radio-item"><input type="checkbox" id="time-slot-2" name="time-slot" value="2"><label for="time-slot-2">2타임</label></div>`;
+  
   document.getElementById('ci-student-submit').innerHTML=`
-    <label>타임 선택 (토요일)</label>
+    <label>타임 선택 (토요일) - 중복 선택 가능</label>
     <div class="radio-group">
-      <div class="radio-item">
-        <input type="radio" id="time-slot-1" name="time-slot" value="1" checked>
-        <label for="time-slot-1">1타임</label>
-      </div>
-      <div class="radio-item">
-        <input type="radio" id="time-slot-2" name="time-slot" value="2">
-        <label for="time-slot-2">2타임</label>
-      </div>
+      ${slot1Html}
+      ${slot2Html}
     </div>
     <button class="btn" onclick="submitWithTimeSlot('${sid}','${student.name}','${student.class}','${lessonType}','${time}',${now.getTime()})">체크인</button>
   `;
 }
 
 async function submitWithTimeSlot(sid,name,cls,lessonType,time,timestamp){
-  const timeSlot=parseInt(document.querySelector('input[name="time-slot"]:checked').value);
+  const checkboxes=document.querySelectorAll('input[name="time-slot"]:checked');
   
-  const record={
-    name:name,
-    class:cls,
-    type:lessonType,
-    time:time,
-    timestamp:timestamp,
-    timeSlot:timeSlot
-  };
+  if(checkboxes.length===0){
+    showToast('최소 1개 타임을 선택하세요');
+    return;
+  }
   
-  await db.ref(`attendance/${currentDate}/students/${sid}`).set(record);
-  showSuccessView(name,lessonType,false);
+  const selectedSlots=Array.from(checkboxes).map(cb=>parseInt(cb.value));
+  
+  for(const slot of selectedSlots){
+    const record={
+      name:name,
+      class:cls,
+      type:lessonType,
+      time:time,
+      timestamp:timestamp,
+      timeSlot:slot
+    };
+    
+    const recordId=`${sid}_slot${slot}`;
+    await db.ref(`attendance/${currentDate}/students/${recordId}`).set(record);
+  }
+  
+  const slotText=selectedSlots.length===2 ? '1타임, 2타임' : `${selectedSlots[0]}타임`;
+  showSuccessView(name,lessonType,false,slotText);
 }
 
 async function loadStaffList(){
@@ -985,16 +1010,18 @@ async function submitStaffCheckin(){
   setTimeout(()=>location.reload(),3000);
 }
 
-function showSuccessView(name,type,late){
+function showSuccessView(name,type,late,slotText){
   showView('success');
   document.getElementById('success-title').textContent='체크인 성공';
-  document.getElementById('success-msg').textContent=`${name} 학생 출석이 완료되었습니다`;
+  
+  let msg=`${name} 학생 출석이 완료되었습니다`;
+  if(slotText){
+    msg+=`\n(${slotText})`;
+  }
+  document.getElementById('success-msg').textContent=msg;
   
   const badge=document.getElementById('success-badge');
-  if(late){
-    badge.textContent='지각';
-    badge.className='success-badge late-badge';
-  }else if(type==='makeup'){
+  if(type==='makeup'){
     badge.textContent='보충수업';
     badge.className='success-badge badge-makeup';
   }else{
